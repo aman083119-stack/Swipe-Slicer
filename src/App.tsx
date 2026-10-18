@@ -1,12 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Volume2, VolumeX, Sparkles, TrendingUp, Pause, Play, Clapperboard, RotateCcw, CheckCircle2, Globe, Trophy } from 'lucide-react';
-import { GameState, Shape, SplitHalf, Particle, FloatingText, SwipePoint, Theme, AchievementProgressStore, AchievementNotificationItem } from './types';
+import { Volume2, VolumeX, Sparkles, TrendingUp, Pause, Play, Clapperboard, RotateCcw, CheckCircle2, Globe, Trophy, Calendar, Palette, Flame, Zap, Swords } from 'lucide-react';
+import { GameState, Shape, SplitHalf, Particle, FloatingText, SwipePoint, Theme, AchievementProgressStore, AchievementNotificationItem, DailyMissionsStore, DailyMission, BladeTrailConfig, BladeTrailParticle } from './types';
 import { sound } from './sound';
-import { getThemeForDay, drawThemeShape, drawBomb } from './themes';
+import { getThemeForDay, drawThemeShape, drawBomb, getThemeByName, ALL_THEMES } from './themes';
 import { playables, PlayablesSaveData } from './playables';
 import { ACHIEVEMENTS, loadAchievementProgress, saveAchievementProgress, checkNewUnlocks } from './achievements';
 import { AchievementsModal } from './AchievementsModal';
 import { AchievementNotificationBanner } from './AchievementNotificationBanner';
+import { loadDailyMissionsStore, saveDailyMissionsStore, checkMissionProgress } from './missions';
+import { BLADE_TRAILS, getBladeTrail, spawnTrailParticles, drawBladeTrail, drawBladeTrailParticles } from './bladeTrails';
+import { DailyMissionsModal } from './DailyMissionsModal';
+import { BladeTrailsModal } from './BladeTrailsModal';
+import { ThemeSelectorModal } from './ThemeSelectorModal';
+import { DailyMissionNotificationBanner } from './DailyMissionNotificationBanner';
+import { safeStorage } from './storage';
 
 const GAME_WIDTH = 600;
 const GAME_HEIGHT = 800;
@@ -77,7 +84,7 @@ export default function App() {
 
   const [highscore, setHighscore] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem('swipeslicerscore');
+      const saved = safeStorage.getItem('swipeslicerscore');
       return saved ? parseInt(saved, 10) : 0;
     } catch {
       return 0;
@@ -126,7 +133,7 @@ export default function App() {
 
   const [leaderboard, setLeaderboard] = useState<{ score: number; date: string; difficulty: string }[]>(() => {
     try {
-      const saved = localStorage.getItem('swipeslicerleaderboard');
+      const saved = safeStorage.getItem('swipeslicerleaderboard');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed.slice(0, 5);
@@ -178,6 +185,68 @@ export default function App() {
     }
   };
 
+  // Daily Missions State & Store
+  const [missionsStore, setMissionsStore] = useState<DailyMissionsStore>(() => loadDailyMissionsStore());
+  const missionsStoreRef = useRef<DailyMissionsStore>(missionsStore);
+  const [isMissionsOpen, setIsMissionsOpen] = useState<boolean>(false);
+  const [activeMissionNotification, setActiveMissionNotification] = useState<DailyMission | null>(null);
+  const missionNotificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Blade Trails State & Store
+  const [isBladeTrailsOpen, setIsBladeTrailsOpen] = useState<boolean>(false);
+  const bladeTrailParticlesRef = useRef<BladeTrailParticle[]>([]);
+  const equippedTrailRef = useRef<BladeTrailConfig>(getBladeTrail(missionsStore.equippedTrailId));
+
+  // Themes Selector State
+  const [isThemesOpen, setIsThemesOpen] = useState<boolean>(false);
+  const [isDailyAutoTheme, setIsDailyAutoTheme] = useState<boolean>(true);
+
+  useEffect(() => {
+    missionsStoreRef.current = missionsStore;
+    equippedTrailRef.current = getBladeTrail(missionsStore.equippedTrailId);
+  }, [missionsStore]);
+
+  const handleEquipTrail = (trailId: string) => {
+    const updated: DailyMissionsStore = {
+      ...missionsStoreRef.current,
+      equippedTrailId: trailId
+    };
+    missionsStoreRef.current = updated;
+    setMissionsStore(updated);
+    saveDailyMissionsStore(updated);
+    equippedTrailRef.current = getBladeTrail(trailId);
+  };
+
+  const handleSelectTheme = (theme: Theme, isDailyAuto: boolean) => {
+    setIsDailyAutoTheme(isDailyAuto);
+    setActiveTheme(theme);
+  };
+
+  const triggerMissionEvent = (event: {
+    type: 'slice_shape' | 'slice_bomb' | 'slice_slomo' | 'combo' | 'streak' | 'score';
+    color?: string;
+    value?: number;
+  }) => {
+    const { updatedStore, newlyCompleted } = checkMissionProgress(missionsStoreRef.current, event);
+    if (newlyCompleted.length > 0) {
+      missionsStoreRef.current = updatedStore;
+      setMissionsStore(updatedStore);
+      sound.playMissionComplete();
+
+      const latest = newlyCompleted[0];
+      setActiveMissionNotification(latest);
+      if (missionNotificationTimerRef.current) {
+        clearTimeout(missionNotificationTimerRef.current);
+      }
+      missionNotificationTimerRef.current = setTimeout(() => {
+        setActiveMissionNotification(null);
+      }, 4000);
+    } else if (updatedStore !== missionsStoreRef.current) {
+      missionsStoreRef.current = updatedStore;
+      setMissionsStore(updatedStore);
+    }
+  };
+
   // Synchronize state value to refs for tick-access
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -204,7 +273,13 @@ export default function App() {
       difficulty: diffVal,
       soundMuted: mutedVal,
       version: 1,
-      achievements: achievementStoreRef.current
+      achievements: achievementStoreRef.current,
+      missions: missionsStoreRef.current,
+      bladeTrails: {
+        equipped: missionsStoreRef.current.equippedTrailId,
+        unlocked: missionsStoreRef.current.unlockedTrails
+      },
+      unlockedThemes: missionsStoreRef.current.unlockedThemes
     };
     playables.saveData(data);
   };
@@ -238,7 +313,9 @@ export default function App() {
           leaderboard,
           difficulty: difficultyRef.current,
           soundMuted: sound.isMuted(),
-          version: 1
+          version: 1,
+          achievements: achievementStoreRef.current,
+          missions: missionsStoreRef.current
         });
       }
     });
@@ -277,6 +354,21 @@ export default function App() {
           achievementStoreRef.current = merged;
           setAchievementStore(merged);
           saveAchievementProgress(merged);
+        }
+        if (saved.bladeTrails && typeof saved.bladeTrails === 'object') {
+          const cur = missionsStoreRef.current;
+          const mergedTrails = Array.from(new Set([...cur.unlockedTrails, ...(saved.bladeTrails.unlocked || [])]));
+          const equipped = saved.bladeTrails.equipped || cur.equippedTrailId;
+          const mergedThemes = Array.from(new Set([...cur.unlockedThemes, ...(saved.unlockedThemes || [])]));
+          const updated: DailyMissionsStore = {
+            ...cur,
+            unlockedTrails: mergedTrails,
+            equippedTrailId: equipped,
+            unlockedThemes: mergedThemes
+          };
+          missionsStoreRef.current = updated;
+          setMissionsStore(updated);
+          saveDailyMissionsStore(updated);
         }
       }
 
@@ -640,6 +732,7 @@ export default function App() {
             streak: streakRef.current,
             score: scoreRef.current
           });
+          triggerMissionEvent({ type: 'slice_bomb' });
           triggerBombBlast(s.x, s.y, s.color || '#f43f5e');
           return;
         }
@@ -667,6 +760,7 @@ export default function App() {
             streak: streakRef.current,
             score: scoreRef.current
           });
+          triggerMissionEvent({ type: 'slice_slomo' });
 
           spawnSplatterHalves(s, p1, p2);
           spawnSplatterSparks(s.x, s.y, '#22d3ee');
@@ -723,6 +817,11 @@ export default function App() {
           achievementStoreRef.current.highestStreak = streakRef.current;
         }
 
+        // Trigger daily missions checks for shape slice, combo, and streak
+        triggerMissionEvent({ type: 'slice_shape', color: s.color });
+        triggerMissionEvent({ type: 'combo', value: swipeComboCountRef.current });
+        triggerMissionEvent({ type: 'streak', value: streakRef.current });
+
         const baseSliceScore = 10;
         let rewardedScore = baseSliceScore * swipeComboCountRef.current;
 
@@ -742,6 +841,12 @@ export default function App() {
           rewardedScore = Math.round(rewardedScore * streakMultiplier);
         }
 
+        // Apply Daily Mission Bonus Multiplier if unlocked
+        const dailyBonusMult = 1.0 + (missionsStoreRef.current.claimedMultiplier || 0);
+        if (dailyBonusMult > 1.0) {
+          rewardedScore = Math.round(rewardedScore * dailyBonusMult);
+        }
+
         scoreRef.current += rewardedScore;
         setScoreState(scoreRef.current);
 
@@ -753,6 +858,7 @@ export default function App() {
           streak: streakRef.current,
           score: scoreRef.current
         });
+        triggerMissionEvent({ type: 'score', value: scoreRef.current });
 
         // Emit shockwaves for combo of 5 or more
         if (swipeComboCountRef.current >= 5) {
@@ -902,7 +1008,6 @@ export default function App() {
       }
     }
 
-    // 3. Spray Particles Decay
     const particles = particlesRef.current;
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -911,6 +1016,21 @@ export default function App() {
       p.alpha -= p.decay * speedMultiplier;
       if (p.alpha <= 0) {
         particles.splice(i, 1);
+      }
+    }
+
+    // 3.5. Blade Trail Particles Decay
+    const trailParticles = bladeTrailParticlesRef.current;
+    for (let i = trailParticles.length - 1; i >= 0; i--) {
+      const tp = trailParticles[i];
+      tp.x += tp.vx * speedMultiplier;
+      tp.y += tp.vy * speedMultiplier;
+      tp.alpha -= tp.decay * speedMultiplier;
+      if (tp.spin && tp.angle !== undefined) {
+        tp.angle += tp.spin * speedMultiplier;
+      }
+      if (tp.alpha <= 0) {
+        trailParticles.splice(i, 1);
       }
     }
 
@@ -952,6 +1072,7 @@ export default function App() {
     activeShapesRef.current = [];
     splitHalvesRef.current = [];
     particlesRef.current = [];
+    bladeTrailParticlesRef.current = [];
     floatingTextsRef.current = [];
     swipePointsRef.current = [];
     swipeChainColorRef.current = null;
@@ -1080,6 +1201,17 @@ export default function App() {
     if (pts.length > 0) {
       const lastPoint = pts[pts.length - 1];
       processSwipeSegment(lastPoint, newPoint);
+
+      // Spawn custom Blade Trail particles based on chosen style
+      const trailParticles = spawnTrailParticles(
+        equippedTrailRef.current,
+        lastPoint,
+        newPoint,
+        swipeComboCountRef.current >= 3
+      );
+      if (trailParticles.length > 0) {
+        bladeTrailParticlesRef.current.push(...trailParticles);
+      }
     }
 
     pts.push(newPoint);
@@ -1216,6 +1348,9 @@ export default function App() {
             ctx.restore();
           }
 
+          // Dynamic Blade Trail Particles (Embers, Sparks, Stars, Petals, Lightning, Bits)
+          drawBladeTrailParticles(ctx, bladeTrailParticlesRef.current);
+
           // DRAWING LAYER 3: Active Shapes
           const activeShapes = activeShapesRef.current;
           for (let i = 0; i < activeShapes.length; i++) {
@@ -1244,26 +1379,17 @@ export default function App() {
             }
           }
 
-          // DRAWING LAYER 4: Touch/Mouse Neon trail
+          // DRAWING LAYER 4: Dynamic Custom Blade Trail
           const swipePoints = swipePointsRef.current;
           if (swipePoints.length > 1) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.moveTo(swipePoints[0].x, swipePoints[0].y);
-            for (let i = 1; i < swipePoints.length; i++) {
-              ctx.lineTo(swipePoints[i].x, swipePoints[i].y);
-            }
-
             const isComboActive = swipeComboCountRef.current >= 3;
-            const strokeColor = isComboActive ? '#f43f5e' : (swipeChainColorRef.current || '#3b82f6');
-            ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = isComboActive ? 8 : 5;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.shadowColor = strokeColor;
-            ctx.shadowBlur = 10;
-            ctx.stroke();
-            ctx.restore();
+            drawBladeTrail(
+              ctx,
+              swipePoints,
+              equippedTrailRef.current,
+              isComboActive,
+              swipeChainColorRef.current
+            );
           }
 
           // DRAWING LAYER 5: Scores floating
@@ -1339,20 +1465,33 @@ export default function App() {
           <div className="flex flex-col">
             <span className="text-xs uppercase tracking-widest text-zinc-400 font-semibold">Score</span>
             <span className="text-3xl font-bold text-white glow-blue">{scoreState}</span>
-            <div
-              className={`mt-1 px-2 py-0.5 rounded bg-pink-500/20 border border-pink-500/40 text-pink-400 text-xs font-bold self-start transition-opacity duration-200 ${
-                comboVisible ? 'opacity-100' : 'opacity-0'
-              }`}
-            >
-              Combo x{comboCount}
+            <div className="flex items-center gap-1.5 mt-1">
+              <div
+                className={`px-2 py-0.5 rounded bg-pink-500/20 border border-pink-500/40 text-pink-400 text-xs font-bold transition-opacity duration-200 ${
+                  comboVisible ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                Combo x{comboCount}
+              </div>
+              {missionsStore.claimedMultiplier > 0 && (
+                <div className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-extrabold tracking-wide uppercase flex items-center gap-1 shadow-sm">
+                  <Zap className="w-2.5 h-2.5" /> +{(missionsStore.claimedMultiplier).toFixed(2)}x
+                </div>
+              )}
             </div>
           </div>
 
           {/* Theme Badge & Streak */}
-          <div className="flex flex-col items-center gap-1.5">
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Daily Theme</span>
-              <div className="px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/40 bg-emerald-950/40 text-emerald-400 flex items-center gap-1.5 shadow-sm">
+          <div className="flex flex-col items-center gap-1.5 pointer-events-auto">
+            <div
+              onClick={() => setIsThemesOpen(true)}
+              className="flex flex-col items-center cursor-pointer group"
+              title="Click to customize themes"
+            >
+              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold group-hover:text-zinc-300 transition-colors flex items-center gap-1">
+                Theme <Palette className="w-2.5 h-2.5" />
+              </span>
+              <div className="px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/40 bg-emerald-950/40 text-emerald-400 flex items-center gap-1.5 shadow-sm group-hover:border-emerald-400 transition-colors">
                 <span>{activeTheme.name}</span>
               </div>
             </div>
@@ -1483,6 +1622,28 @@ export default function App() {
                   Restart Run
                 </button>
                 <button
+                  onClick={() => setIsMissionsOpen(true)}
+                  className="px-6 py-2.5 w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-2xl font-semibold text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    Daily Missions
+                  </span>
+                  {missionsStore.missions.some(m => m.completed && !m.claimed) && (
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setIsBladeTrailsOpen(true)}
+                  className="px-6 py-2.5 w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-2xl font-semibold text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    Blade Trails
+                  </span>
+                  <span className="text-[10px] text-cyan-400/90 font-medium">{equippedTrailRef.current.name}</span>
+                </button>
+                <button
                   onClick={() => setIsAchievementsOpen(true)}
                   className="px-6 py-2.5 w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-2xl font-semibold text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
@@ -1570,6 +1731,70 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Daily Missions Entry Card */}
+              <button
+                onClick={() => setIsMissionsOpen(true)}
+                className="mb-2.5 px-3.5 py-2.5 w-full bg-gradient-to-r from-amber-500/10 via-zinc-900 to-zinc-900 border border-amber-500/30 hover:border-amber-500/50 hover:bg-zinc-850 rounded-2xl text-left flex items-center justify-between text-xs transition-colors cursor-pointer group shadow-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                    <Calendar className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-zinc-200 block group-hover:text-white">Daily Missions</span>
+                      {missionsStore.claimedMultiplier > 0 && (
+                        <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-bold">
+                          +{(missionsStore.claimedMultiplier).toFixed(2)}x
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-zinc-500">
+                      {missionsStore.missions.filter(m => m.completed).length}/3 completed today
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {missionsStore.missions.some(m => m.completed && !m.claimed) ? (
+                    <span className="text-[10px] bg-amber-400 text-zinc-950 font-extrabold px-2 py-0.5 rounded-full animate-bounce">
+                      Claim
+                    </span>
+                  ) : (
+                    <span className="font-mono tabular-nums text-xs text-amber-400/90 font-semibold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg">
+                      {missionsStore.missions.filter(m => m.completed).length} / 3
+                    </span>
+                  )}
+                </div>
+              </button>
+
+              {/* Blade Trails Entry Card */}
+              <button
+                onClick={() => setIsBladeTrailsOpen(true)}
+                className="mb-2.5 px-3.5 py-2.5 w-full bg-gradient-to-r from-cyan-500/10 via-zinc-900 to-zinc-900 border border-cyan-500/30 hover:border-cyan-500/50 hover:bg-zinc-850 rounded-2xl text-left flex items-center justify-between text-xs transition-colors cursor-pointer group shadow-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-200 block group-hover:text-white">Blade Trails</span>
+                    <span className="text-[10px] text-zinc-500">Equipped: {equippedTrailRef.current.name}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div
+                    className="w-3 h-3 rounded-full shadow-sm"
+                    style={{
+                      backgroundColor: equippedTrailRef.current.primaryColor,
+                      boxShadow: `0 0 6px ${equippedTrailRef.current.primaryColor}`
+                    }}
+                  />
+                  <span className="text-[10px] text-cyan-400 font-semibold bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-lg">
+                    {missionsStore.unlockedTrails.length}/{BLADE_TRAILS.length}
+                  </span>
+                </div>
+              </button>
+
               {/* Achievements Entry Card */}
               <button
                 onClick={() => setIsAchievementsOpen(true)}
@@ -1592,8 +1817,15 @@ export default function App() {
               {/* Dynamic Theme Preview */}
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3.5 w-full text-left mb-4 select-none">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Today's Rotation</span>
-                  <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold">ACTIVE</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                    {isDailyAutoTheme ? "Today's Rotation" : "Equipped Custom Theme"}
+                  </span>
+                  <button
+                    onClick={() => setIsThemesOpen(true)}
+                    className="text-[10px] bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded border border-purple-500/40 font-bold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Palette className="w-3 h-3" /> Customize
+                  </button>
                 </div>
                 <h3 className="text-base font-bold text-white mb-0.5">{activeTheme.name}</h3>
                 <p className="text-[11px] text-zinc-400 mb-2.5">{activeTheme.desc}</p>
@@ -1700,6 +1932,34 @@ export default function App() {
                   className="px-6 py-3 w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-2xl font-bold text-sm shadow-md active:scale-95 transition-all cursor-pointer"
                 >
                   View Run Stats
+                </button>
+                <button
+                  onClick={() => setIsMissionsOpen(true)}
+                  className="px-6 py-2.5 w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-2xl font-semibold text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    Daily Missions
+                  </span>
+                  {missionsStore.missions.some(m => m.completed && !m.claimed) ? (
+                    <span className="text-[10px] bg-amber-400 text-zinc-950 font-extrabold px-1.5 py-0.2 rounded-full animate-bounce">
+                      Claim
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-zinc-500 font-mono">
+                      {missionsStore.missions.filter(m => m.completed).length}/3
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setIsBladeTrailsOpen(true)}
+                  className="px-6 py-2.5 w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-2xl font-semibold text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    Blade Trails
+                  </span>
+                  <span className="text-[10px] text-cyan-400 font-medium">{equippedTrailRef.current.name}</span>
                 </button>
                 <button
                   onClick={() => setIsAchievementsOpen(true)}
@@ -1860,6 +2120,12 @@ export default function App() {
         {/* In-Game Unlock Notification Toast Banner */}
         <AchievementNotificationBanner notification={activeNotification} />
 
+        {/* In-Game Daily Mission Completion Notification Banner */}
+        <DailyMissionNotificationBanner
+          mission={activeMissionNotification}
+          onOpenMissions={() => setIsMissionsOpen(true)}
+        />
+
         {/* Dedicated Achievements Modal */}
         <AchievementsModal
           isOpen={isAchievementsOpen}
@@ -1870,6 +2136,34 @@ export default function App() {
             streak: streakRef.current,
             score: scoreRef.current
           }}
+        />
+
+        {/* Daily Missions Modal */}
+        <DailyMissionsModal
+          isOpen={isMissionsOpen}
+          onClose={() => setIsMissionsOpen(false)}
+          missionsStore={missionsStore}
+          onUpdateStore={setMissionsStore}
+          onOpenBladeTrails={() => setIsBladeTrailsOpen(true)}
+        />
+
+        {/* Blade Trails Modal */}
+        <BladeTrailsModal
+          isOpen={isBladeTrailsOpen}
+          onClose={() => setIsBladeTrailsOpen(false)}
+          unlockedTrailIds={missionsStore.unlockedTrails}
+          equippedTrailId={missionsStore.equippedTrailId}
+          onEquipTrail={handleEquipTrail}
+        />
+
+        {/* Theme Selector Modal */}
+        <ThemeSelectorModal
+          isOpen={isThemesOpen}
+          onClose={() => setIsThemesOpen(false)}
+          activeTheme={activeTheme}
+          unlockedThemeIds={missionsStore.unlockedThemes}
+          onSelectTheme={handleSelectTheme}
+          isDailyAuto={isDailyAutoTheme}
         />
       </div>
     </div>

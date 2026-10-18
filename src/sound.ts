@@ -148,6 +148,88 @@ export class SoundEngine {
       osc.stop(noteEnd);
     });
   }
+
+  public playMissionComplete() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    // Upbeat fanfare: F4, A4, C5, F5
+    const notes = [349.23, 440.00, 523.25, 698.46];
+    const startTime = this.ctx.currentTime;
+
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime + idx * 0.07);
+
+      const noteStart = startTime + idx * 0.07;
+      const noteEnd = noteStart + 0.25;
+
+      gain.gain.setValueAtTime(0.14, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteEnd);
+
+      osc.start(noteStart);
+      osc.stop(noteEnd);
+    });
+  }
+
+  public playClaimReward() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    // Ascending shimmer sparkle
+    const notes = [587.33, 739.99, 880.00, 1174.66, 1479.98];
+    const startTime = this.ctx.currentTime;
+
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime + idx * 0.05);
+
+      const noteStart = startTime + idx * 0.05;
+      const noteEnd = noteStart + 0.3;
+
+      gain.gain.setValueAtTime(0.16, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteEnd);
+
+      osc.start(noteStart);
+      osc.stop(noteEnd);
+    });
+  }
+
+  public playEquipTrail() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    // Swift resonant swoosh with high chime
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.18);
+
+    gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.2);
+  }
 }
 
 export const sound = new SoundEngine();

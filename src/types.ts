@@ -107,3 +107,77 @@ export interface AchievementNotificationItem {
   iconName: string;
   timestamp: number;
 }
+
+// Daily Missions & Blade Trails Types
+export type DailyMissionType =
+  | 'slice_color'
+  | 'slice_bombs'
+  | 'reach_combo'
+  | 'reach_streak'
+  | 'score_single_run'
+  | 'total_shapes'
+  | 'slice_slomo';
+
+export type DailyMissionRewardType = 'multiplier' | 'theme' | 'blade_trail';
+
+export interface DailyMission {
+  id: string;
+  title: string;
+  description: string;
+  type: DailyMissionType;
+  colorKey?: 'blue' | 'green' | 'pink' | 'amber' | 'purple';
+  target: number;
+  progress: number;
+  completed: boolean;
+  claimed: boolean;
+  rewardType: DailyMissionRewardType;
+  rewardValue: string | number;
+  rewardLabel: string;
+  iconName: string;
+}
+
+export interface DailyMissionsStore {
+  date: string; // YYYY-MM-DD
+  missions: DailyMission[];
+  claimedMultiplier: number; // e.g. 0, 0.25, 0.50
+  unlockedThemes: string[];
+  unlockedTrails: string[];
+  equippedTrailId: string;
+}
+
+export type BladeTrailStyle =
+  | 'cyan'
+  | 'embers'
+  | 'rainbow'
+  | 'lightning'
+  | 'sakura'
+  | 'solar'
+  | 'matrix';
+
+export interface BladeTrailConfig {
+  id: string;
+  name: string;
+  description: string;
+  style: BladeTrailStyle;
+  primaryColor: string;
+  secondaryColor: string;
+  coreColor: string;
+  glowBlur: number;
+  particleType: 'sparks' | 'embers' | 'stars' | 'lightning' | 'petals' | 'flares' | 'bits';
+  iconName: string;
+  unlockHint: string;
+}
+
+export interface BladeTrailParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  alpha: number;
+  decay: number;
+  angle?: number;
+  spin?: number;
+  type?: string;
+}

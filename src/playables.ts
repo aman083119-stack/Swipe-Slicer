@@ -2,6 +2,7 @@
  * YouTube Playables SDK Integration Bridge
  * Implements full specification according to https://developers.google.com/youtube/gaming/playables
  */
+import { safeStorage } from './storage';
 
 export interface PlayablesSaveData {
   highscore: number;
@@ -10,6 +11,9 @@ export interface PlayablesSaveData {
   soundMuted: boolean;
   version: number;
   achievements?: any;
+  missions?: any;
+  bladeTrails?: any;
+  unlockedThemes?: string[];
 }
 
 const LOCAL_STORAGE_KEY = 'swipeslicer_playables_data';
@@ -141,7 +145,7 @@ class PlayablesBridge {
 
     // LocalStorage fallback
     try {
-      const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const local = safeStorage.getItem(LOCAL_STORAGE_KEY);
       if (local) {
         return JSON.parse(local) as PlayablesSaveData;
       }
@@ -165,7 +169,7 @@ class PlayablesBridge {
 
     // Save locally first
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, serialized);
+      safeStorage.setItem(LOCAL_STORAGE_KEY, serialized);
     } catch {}
 
     // Save to YouTube Cloud Save

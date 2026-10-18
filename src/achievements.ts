@@ -1,4 +1,5 @@
 import { Achievement, AchievementProgressStore, AchievementState } from './types';
+import { safeStorage } from './storage';
 
 export const ACHIEVEMENTS: Achievement[] = [
   // Bombs
@@ -143,24 +144,7 @@ export const ACHIEVEMENTS: Achievement[] = [
 const STORAGE_KEY = 'swipeslicerachievements';
 
 export function loadAchievementProgress(): AchievementProgressStore {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        totalBombsSliced: Number(parsed.totalBombsSliced) || 0,
-        highestCombo: Number(parsed.highestCombo) || 0,
-        highestStreak: Number(parsed.highestStreak) || 0,
-        highScore: Number(parsed.highScore) || 0,
-        totalShapesSliced: Number(parsed.totalShapesSliced) || 0,
-        unlockedIds: parsed.unlockedIds && typeof parsed.unlockedIds === 'object' ? parsed.unlockedIds : {}
-      };
-    }
-  } catch (err) {
-    console.error('Failed to load achievement progress:', err);
-  }
-
-  return {
+  const defaultStore: AchievementProgressStore = {
     totalBombsSliced: 0,
     highestCombo: 0,
     highestStreak: 0,
@@ -168,13 +152,34 @@ export function loadAchievementProgress(): AchievementProgressStore {
     totalShapesSliced: 0,
     unlockedIds: {}
   };
+
+  try {
+    const raw = safeStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          totalBombsSliced: Number(parsed.totalBombsSliced) || 0,
+          highestCombo: Number(parsed.highestCombo) || 0,
+          highestStreak: Number(parsed.highestStreak) || 0,
+          highScore: Number(parsed.highScore) || 0,
+          totalShapesSliced: Number(parsed.totalShapesSliced) || 0,
+          unlockedIds: parsed.unlockedIds && typeof parsed.unlockedIds === 'object' ? parsed.unlockedIds : {}
+        };
+      }
+    }
+  } catch {
+    // In restricted contexts, gracefully fallback to default store without throwing or console errors
+  }
+
+  return defaultStore;
 }
 
 export function saveAchievementProgress(store: AchievementProgressStore): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  } catch (err) {
-    console.error('Failed to save achievement progress:', err);
+    safeStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    // Silently continue if storage is restricted
   }
 }
 

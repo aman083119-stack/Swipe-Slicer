@@ -10,9 +10,53 @@ export const ROTATING_THEMES: Theme[] = [
   { name: "Nature's Seeds", desc: "Sprouted organic vector nodes bursting with vibrant energy.", shapes: ["leaf", "heart", "teardrop"], colors: ["#22c55e", "#ec4899", "#eab308"] } // Sat
 ];
 
+export const UNLOCKABLE_THEMES: (Theme & { id: string; unlockHint: string })[] = [
+  {
+    id: "theme_solar",
+    name: "Solar Flare",
+    desc: "Blazing heliospheric flares forged in coronal plasma.",
+    shapes: ["circle", "star", "ring"],
+    colors: ["#eab308", "#f97316", "#fef08a"],
+    unlockHint: "Complete Daily Mission reward"
+  },
+  {
+    id: "theme_vaporwave",
+    name: "Vaporwave Retro",
+    desc: "Sunset synth aesthetic glowing with pastel violet and magenta neon.",
+    shapes: ["triangle", "diamond", "square"],
+    colors: ["#ec4899", "#8b5cf6", "#06b6d4"],
+    unlockHint: "Complete Daily Mission reward"
+  },
+  {
+    id: "theme_emerald",
+    name: "Emerald Glade",
+    desc: "Verdant botanical energy pulsing through bioluminescent leaves.",
+    shapes: ["leaf", "clover", "heart"],
+    colors: ["#10b981", "#22c55e", "#14b8a6"],
+    unlockHint: "Complete Daily Mission reward"
+  },
+  {
+    id: "theme_obsidian",
+    name: "Obsidian Void",
+    desc: "Extragalactic antimatter matter shards bound in cosmic red light.",
+    shapes: ["hexagon", "diamond", "star"],
+    colors: ["#f43f5e", "#a855f7", "#38bdf8"],
+    unlockHint: "Complete Daily Mission reward"
+  }
+];
+
+export const ALL_THEMES: Theme[] = [
+  ...ROTATING_THEMES,
+  ...UNLOCKABLE_THEMES.map(({ id, unlockHint, ...t }) => t)
+];
+
 export function getThemeForDay(date: Date = new Date()): Theme {
   const currentDay = date.getDay();
   return ROTATING_THEMES[currentDay];
+}
+
+export function getThemeByName(name: string): Theme | undefined {
+  return ALL_THEMES.find(t => t.name.toLowerCase() === name.toLowerCase());
 }
 
 export function drawThemeShape(
