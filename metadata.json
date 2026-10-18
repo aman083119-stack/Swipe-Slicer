@@ -1,0 +1,6 @@
+{
+  "name": "Swipe Slicer",
+  "description": "A high-performance neon-infused swipe slicing arcade game with combo chaining and live sound synthesis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
